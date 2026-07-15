@@ -1,0 +1,17 @@
+{
+"type": "FeatureCollection",
+"name": "runoff_hii",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "station_id": 726653, "latitude": 8.2801, "longitude": 99.906487, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.906487, 8.2801 ] } },
+{ "type": "Feature", "properties": { "station_id": 999405, "latitude": 8.3062, "longitude": 99.859917, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.859917, 8.3062 ] } },
+{ "type": "Feature", "properties": { "station_id": 2639, "latitude": 8.39629, "longitude": 99.920143, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.920143, 8.39629 ] } },
+{ "type": "Feature", "properties": { "station_id": 2640, "latitude": 8.39966, "longitude": 99.833122, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.833122, 8.39966 ] } },
+{ "type": "Feature", "properties": { "station_id": 726651, "latitude": 8.42813, "longitude": 99.860611, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.860611, 8.42813 ] } },
+{ "type": "Feature", "properties": { "station_id": 1373691, "latitude": 8.438141, "longitude": 100.0304, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 100.0304, 8.438141 ] } },
+{ "type": "Feature", "properties": { "station_id": 1094448, "latitude": 8.40119, "longitude": 99.80196, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.80196, 8.40119 ] } },
+{ "type": "Feature", "properties": { "station_id": 2641, "latitude": 8.40836, "longitude": 99.797852, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.797852, 8.40836 ] } },
+{ "type": "Feature", "properties": { "station_id": 1120557, "latitude": 8.43295, "longitude": 99.7826, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.7826, 8.43295 ] } },
+{ "type": "Feature", "properties": { "station_id": 1130124, "latitude": 8.4339, "longitude": 99.7833, "province_c": 80 }, "geometry": { "type": "Point", "coordinates": [ 99.7833, 8.4339 ] } }
+]
+}

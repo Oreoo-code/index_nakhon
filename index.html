@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบข้อมูลลุ่มน้ำ นครศรีธรรมราช</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; height: 100%; font-family: "Sarabun", "Tahoma", sans-serif; }
+        #map { height: 100vh; width: 100%; }
+
+        /* Click-triggered name popup: transparent, borderless, no tip/line */
+        .my-popup .leaflet-popup-content-wrapper {
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            box-shadow: none;
+        }
+        .my-popup .leaflet-popup-content {
+            margin: 4px 10px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .my-popup .leaflet-popup-tip-container { display: none; }
+        .my-popup .leaflet-popup-tip { display: none; }
+
+        .leaflet-control-layers {
+            max-height: 80vh;
+            overflow-y: auto;
+            font-size: 13px;
+        }
+
+        /* Loading indicator */
+        #loading-indicator {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: #fff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            font-size: 13px;
+            display: none;
+        }
+        #loading-indicator.visible { display: block; }
+
+        /* Error toast */
+        #error-toast {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: #d32f2f;
+            color: #fff;
+            padding: 10px 16px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            font-size: 13px;
+            max-width: 90vw;
+            display: none;
+        }
+        #error-toast.visible { display: block; }
+
+        /* Legend */
+        .legend-box {
+            background: #fff;
+            padding: 8px 10px;
+            border-radius: 6px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+        .legend-swatch {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin-right: 6px;
+            border-radius: 3px;
+            vertical-align: middle;
+            border: 1px solid rgba(0,0,0,0.15);
+        }
+
+        .map-point-icon {
+            background: transparent;
+            border: none;
+        }
+        .map-point-badge {
+            display: block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        }
+        .dot-icon {
+            display: block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid #ffffff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        }
+        .shape-icon {
+            display: block;
+            background: rgba(255,255,255,0.98);
+            border: 2px solid rgba(0,0,0,0.15);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.24);
+        }
+        .shape-icon.square {
+            width: 14px;
+            height: 14px;
+            border-radius: 2px;
+        }
+        .shape-icon.diamond {
+            width: 14px;
+            height: 14px;
+            transform: rotate(45deg);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="loading-indicator">กำลังโหลดข้อมูล...</div>
+    <div id="error-toast"></div>
+
+    <script>
+        // ---------------------------------------------------------------
+        // Config: one place to define every overlay layer
+        // ---------------------------------------------------------------
+        var LAYERS = [
+            { file: 'boundary_basin.json', name: ' Watershed Boundary', color: '#ff0000', label: labelDefault },
+            { file: 'stream.json',         name: ' River Network',     color: '#00a2ff', label: labelDefault },
+            { file: 'road_link.json',      name: ' Roads',            color: '#ffeb3b', label: labelDefault },
+            { file: 'building.json',       name: ' Buildings',        color: '#ff9800', label: labelDefault },
+            { file: 'school.json',         name: ' Educational institutions',          color: '#9c27b0', label: labelName },
+            { file: 'hospital.json',       name: ' Hospitals',        color: '#e91e63', label: labelName },
+            { file: 'runoff_rid.json',     name: 'Runoff Stations (RID)', color: '#4caf50', label: labelCode },
+            { file: 'runoff_hii.json',     name: ' Runoff Stations (HII)', color: '#009688', label: labelStationCode },
+            { file: 'rainfall_hii.json',   name: 'Rainfall Stations (HII)', color: '#3f51b5', label: labelTeleStation }
+        ];
+
+        // Layers that should be visible on the map by default
+        var DEFAULT_VISIBLE = ['boundary_basin.json', 'stream.json'];
+
+        // ---------------------------------------------------------------
+        // Label resolvers — one function per data shape, no more
+        // string-matching against filenames scattered through the code
+        // ---------------------------------------------------------------
+        function getFirstValue(props, keys) {
+            if (!props) return 'Unknown';
+            for (var i = 0; i < keys.length; i++) {
+                var key = keys[i];
+                var value = props[key];
+                if (value !== undefined && value !== null && value !== '') {
+                    return String(value);
+                }
+            }
+            return 'Unknown';
+        }
+
+        function labelDefault(props) {
+            return getFirstValue(props, ['name', 'NAME', 'NAME_TH', 'NAME_ENG', 'Name', 'Name_TH', 'Name_Eng']);
+        }
+        function labelName(props) {
+            return getFirstValue(props, ['name', 'NAME', 'NAME_ENG', 'Name', 'Name_Eng']);
+        }
+        function labelCode(props) {
+            return getFirstValue(props, ['code', 'Code', 'CODE']);
+        }
+        function labelStationCode(props) {
+            var station = getFirstValue(props, ['station_id', 'stationId', 'StationID', 'station']);
+            var code = getFirstValue(props, ['code', 'Code', 'CODE']);
+            if (station === 'Unknown' && code === 'Unknown') return 'Unknown';
+            return (station === 'Unknown' ? '' : station) + (code === 'Unknown' ? '' : ' / ' + code);
+        }
+        function labelTeleStation(props) {
+            return getFirstValue(props, ['tele_stati', 'tele_station', 'station_na', 'station_name', 'NAME']);
+        }
+
+        function getLocationText(props) {
+            var district = getFirstValue(props, ['ADMIN_ID_TABLE_NAME2', 'SUB_DISTRICT.gdb/a0000000a.gdbtable_AMP_NAMT', 'AMP_NAMT', 'AMP_NAME', 'AMP_NAME_T', 'DISTRICT_THAI']);
+            var subdistrict = getFirstValue(props, ['ADMIN_ID_TABLE_NAME3', 'SUB_DISTRICT.gdb/a0000000a.gdbtable_TAM_NAMT', 'TAM_NAMT', 'TAM_NAME', 'TAM_NAME_T', 'SUBDISTRICT_THAI']);
+            var parts = [];
+
+            if (district !== 'Unknown') parts.push('อ. ' + district);
+            if (subdistrict !== 'Unknown') parts.push('ต. ' + subdistrict);
+
+            return parts.join('<br>');
+        }
+
+        function buildPopupContent(props, fallbackText) {
+            var content = fallbackText;
+            var locationText = getLocationText(props);
+
+            if (locationText) {
+                content = fallbackText + '<br>' + locationText;
+            }
+
+            return content;
+        }
+
+        // ---------------------------------------------------------------
+        // Map setup
+        // ---------------------------------------------------------------
+        var map = L.map('map', { zoomControl: false }).setView([8.43, 99.96], 10);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+        L.control.scale({ imperial: false }).addTo(map);
+
+        var satellite = L.tileLayer(
+            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            { attribution: 'Tiles &copy; Esri', maxZoom: 19 }
+        ).addTo(map);
+
+        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        });
+
+        var layerControl = L.control.layers(
+            { 'Satellite': satellite, 'OpenStreetMap': osm },
+            {},
+            { collapsed: false }
+        ).addTo(map);
+
+        // Legend control, populated as layers successfully load
+        var legend = L.control({ position: 'bottomright' });
+        var legendEntries = [];
+        legend.onAdd = function () {
+            var div = L.DomUtil.create('div', 'legend-box');
+            div.id = 'legend-content';
+            div.innerHTML = '<strong>สัญลักษณ์</strong><br>';
+            return div;
+        };
+        legend.addTo(map);
+
+        function addLegendEntry(name, color) {
+            legendEntries.push(
+                '<span class="legend-swatch" style="background:' + color + '"></span>' + name
+            );
+            document.getElementById('legend-content').innerHTML =
+                '<strong>สัญลักษณ์</strong><br>' + legendEntries.join('<br>');
+        }
+
+        // ---------------------------------------------------------------
+        // Loading / error UI helpers
+        // ---------------------------------------------------------------
+        var pendingLoads = 0;
+        var loadingEl = document.getElementById('loading-indicator');
+        var errorEl = document.getElementById('error-toast');
+        var failedFiles = [];
+
+        function loadStarted() {
+            pendingLoads++;
+            loadingEl.classList.add('visible');
+        }
+        function loadFinished() {
+            pendingLoads = Math.max(0, pendingLoads - 1);
+            if (pendingLoads === 0) loadingEl.classList.remove('visible');
+        }
+        function showError(message) {
+            errorEl.textContent = message;
+            errorEl.classList.add('visible');
+        }
+
+        // ---------------------------------------------------------------
+        // Layer loading
+        // ---------------------------------------------------------------
+        function loadData(cfg) {
+            loadStarted();
+            fetch(cfg.file)
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
+                .then(function (data) {
+                    var style = {
+                        color: cfg.color,
+                        weight: cfg.file === 'boundary_basin.json' ? 3.2 : cfg.file === 'stream.json' ? 2.6 : cfg.file === 'road_link.json' ? 2.2 : 1.8,
+                        opacity: 0.95,
+                        fillOpacity: cfg.file === 'boundary_basin.json' ? 0 : cfg.file === 'building.json' ? 0.26 : 0.16,
+                        smoothFactor: 1.2
+                    };
+
+                    if (cfg.file === 'boundary_basin.json') {
+                        style.fillColor = '#ffffff';
+                        style.fillOpacity = 0;
+                        style.dashArray = '6 4';
+                    }
+
+                    var layer = L.geoJSON(data, {
+                        style: style,
+                        pointToLayer: function (feature, latlng) {
+                            if (cfg.file === 'school.json') {
+                                return L.marker(latlng, {
+                                    icon: L.divIcon({
+                                        html: '<span class="shape-icon square" style="background:#9c27b0"></span>',
+                                        className: 'map-point-icon',
+                                        iconSize: [14, 14],
+                                        iconAnchor: [7, 7],
+                                        popupAnchor: [0, -7]
+                                    })
+                                });
+                            }
+
+                            if (cfg.file === 'hospital.json') {
+                                return L.marker(latlng, {
+                                    icon: L.divIcon({
+                                        html: '<span class="shape-icon diamond" style="background:#e91e63"></span>',
+                                        className: 'map-point-icon',
+                                        iconSize: [14, 14],
+                                        iconAnchor: [7, 7],
+                                        popupAnchor: [0, -7]
+                                    })
+                                });
+                            }
+
+                            return L.marker(latlng, {
+                                icon: L.divIcon({
+                                    html: '<span class="map-point-badge" style="background:' + cfg.color + '"></span>',
+                                    className: 'map-point-icon',
+                                    iconSize: [14, 14],
+                                    iconAnchor: [7, 7],
+                                    popupAnchor: [0, -7]
+                                })
+                            });
+                        },
+                        onEachFeature: function (feature, lay) {
+                            var props = feature.properties || {};
+                            var text = cfg.label(props);
+                            var popupContent = buildPopupContent(props, text);
+                            lay.bindPopup(popupContent, {
+                                closeButton: false,
+                                autoPan: false,
+                                className: 'my-popup'
+                            });
+                        }
+                    });
+
+                    layerControl.addOverlay(layer, cfg.name);
+                    addLegendEntry(cfg.name, cfg.color);
+
+                    if (DEFAULT_VISIBLE.indexOf(cfg.file) !== -1) {
+                        layer.addTo(map);
+                    }
+                })
+                .catch(function (err) {
+                    console.error('โหลดไฟล์ไม่สำเร็จ:', cfg.file, err);
+                    failedFiles.push(cfg.file);
+                    showError('โหลดข้อมูลไม่สำเร็จ: ' + failedFiles.join(', '));
+                })
+                .finally(loadFinished);
+        }
+
+        LAYERS.forEach(loadData);
+    </script>
+</body>
+</html>
